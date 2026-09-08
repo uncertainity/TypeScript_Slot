@@ -729,4 +729,158 @@ const game = {
     printOneSimmacroResult,
 };
 exports.default = game;
-// tsc --target ES2019 --module commonjs game.ts && node -e 'require("./game.js").printOneSimmacroResult()'
+const TEST_TO_RUN = "all";
+function check(condition, message) {
+    if (!condition)
+        throw new Error(`FAILED: ${message}`);
+}
+function checkEqual(actual, expected, message) {
+    check(actual === expected, `${message}; expected ${String(expected)}, received ${String(actual)}`);
+}
+function printForcedBoard(title, board) {
+    const rowNames = ["Top", "Middle", "Bottom"];
+    const rows = Object.fromEntries(Array.from({ length: 3 }, (_, row) => [
+        rowNames[row],
+        Object.fromEntries(Array.from({ length: 5 }, (_, column) => {
+            const position = row * 5 + column;
+            return [`Column ${column + 1}`, formatCell(board[position])];
+        })),
+    ]));
+    console.log(`\n${title}`);
+    console.table(rows);
+}
+function printForcedReels(title, reels) {
+    const rowNames = ["Top", "Middle", "Bottom"];
+    const rows = Object.fromEntries(rowNames.map((name, row) => [
+        name,
+        Object.fromEntries(reels.map((reel, column) => [
+            `Column ${column + 1}`,
+            reel[row],
+        ])),
+    ]));
+    console.log(`\n${title}`);
+    console.table(rows);
+}
+function runStarChecks() {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const boosterBoard = Array(15).fill(null);
+    boosterBoard[0] = { kind: "blue", value: null };
+    boosterBoard[1] = { kind: "cash", value: 1 };
+    boosterBoard[2] = { kind: "cash", value: 5 };
+    printForcedBoard("Booster board before", boosterBoard);
+    applyBoost(M_low, boosterBoard);
+    printForcedBoard("Booster board after", boosterBoard);
+    checkEqual((_a = boosterBoard[1]) === null || _a === void 0 ? void 0 : _a.value, 2, "Booster raises 1 to 2");
+    checkEqual((_b = boosterBoard[2]) === null || _b === void 0 ? void 0 : _b.value, 10, "Booster raises 5 to 10");
+    checkEqual((_c = boosterBoard[0]) === null || _c === void 0 ? void 0 : _c.kind, "cash", "Booster converts to cash");
+    const forcedMultiplierMath = {
+        ...M_low,
+        multiplierValues: [2],
+        multiplierWeights: [1],
+    };
+    const multiplierBoard = Array(15).fill(null);
+    multiplierBoard[0] = { kind: "red", value: null };
+    multiplierBoard[1] = { kind: "cash", value: 5 };
+    printForcedBoard("Multiplier board before (forced 2x)", multiplierBoard);
+    applyMultiplier(forcedMultiplierMath, multiplierBoard);
+    printForcedBoard("Multiplier board after", multiplierBoard);
+    checkEqual((_d = multiplierBoard[1]) === null || _d === void 0 ? void 0 : _d.value, 10, "Multiplier applies forced 2x");
+    checkEqual((_e = multiplierBoard[0]) === null || _e === void 0 ? void 0 : _e.kind, "cash", "Multiplier converts to cash");
+    const collectorBoard = Array(15).fill(null);
+    collectorBoard[0] = { kind: "white", value: null };
+    collectorBoard[1] = { kind: "cash", value: 2 };
+    collectorBoard[2] = { kind: "cash", value: 5 };
+    printForcedBoard("Collector board before", collectorBoard);
+    applyCollector(M_low, collectorBoard);
+    printForcedBoard("Collector board after", collectorBoard);
+    checkEqual((_f = collectorBoard[0]) === null || _f === void 0 ? void 0 : _f.value, 7, "Collector collects all other cash");
+    checkEqual((_g = collectorBoard[0]) === null || _g === void 0 ? void 0 : _g.kind, "cash", "Collector converts to cash");
+    console.log("PASS: star effects");
+}
+function runExpansionChecks() {
+    const reels = [
+        ["H2", "L1", "L2"],
+        ["L1", "L2", "L3"],
+        ["L4", "H2", "L1"],
+        ["L2", "L3", "L4"],
+        ["H2", "H1", "L3"],
+    ];
+    printForcedReels("Expansion board before (selected symbol: H2)", reels);
+    const expanded = applyExpandingSymbol(reels, "H2");
+    printForcedReels("Expansion board after", expanded);
+    check(expanded.slice(0, 3).every((reel) => reel.every((symbol) => symbol === "H2")), "Columns 1, 3 and 5 move left and fully expand");
+    checkEqual(expanded[3][0], reels[1][0], "Original column 2 moves to column 4");
+    checkEqual(expanded[4][0], reels[3][0], "Original column 4 moves to column 5");
+    const expansionWin = evaluateBaseLines(expanded);
+    console.log(`Expansion line wins: ${expansionWin.lineWins.length}`);
+    console.log(`Expansion win: ${expansionWin.win}x total bet`);
+    checkEqual(expansionWin.lineWins.length, 10, "Three expanded columns win all 10 lines");
+    checkEqual(expansionWin.win, 2, "Ten 3-H2 wins total 2x bet");
+    console.log("PASS: expanding symbol and column shifting");
+}
+function runColumnChecks() {
+    const board = Array(15).fill(null);
+    board[0] = { kind: "cash", value: 1 };
+    board[5] = { kind: "cash", value: 2 };
+    board[10] = { kind: "cash", value: 3 };
+    board[2] = { kind: "cash", value: 4 };
+    board[7] = { kind: "cash", value: 5 };
+    board[12] = { kind: "cash", value: 10 };
+    board[1] = { kind: "cash", value: 25 };
+    printForcedBoard("Column-clear board before", board);
+    const result = clearCompletedColumns(board);
+    printForcedBoard("Column-clear board after", board);
+    console.table({
+        "Clear result": {
+            "Columns cleared": result.columnsCleared,
+            "Collected win": result.win,
+        },
+    });
+    checkEqual(result.columnsCleared, 2, "Two simultaneous full columns are counted");
+    checkEqual(result.win, 25, "All values in cleared columns are collected");
+    check([0, 5, 10, 2, 7, 12].every((position) => board[position] === null), "Full columns are cleared");
+    check(board[1] !== null, "An incomplete column remains on the board");
+    console.log("PASS: simultaneous column clearing");
+}
+function runJackpotChecks() {
+    let counter = 0;
+    let totalJackpotWin = 0;
+    const triggered = [];
+    const progression = [];
+    for (const nextCounter of [1, 2, 4, 5, 6, 9, 12, 15]) {
+        const award = getCrossedJackpots(M_low, counter, nextCounter);
+        totalJackpotWin += award.win;
+        triggered.push(...award.triggered);
+        progression.push({
+            "Previous counter": counter,
+            "New counter": nextCounter,
+            "Jackpots triggered": award.triggered.length > 0
+                ? award.triggered.map((jackpot) => `Jackpot ${jackpot}`).join(" + ")
+                : "none",
+            "Award this step": award.win,
+            "Cumulative jackpot win": totalJackpotWin,
+        });
+        counter = nextCounter;
+    }
+    console.log("\nForced jackpot counter progression");
+    console.table(progression);
+    checkEqual(triggered.join(","), "1,2,3,4,5", "Every crossed jackpot triggers once");
+    checkEqual(totalJackpotWin, 1630, "All five configured jackpots are cumulative");
+    const jumpedMilestones = getCrossedJackpots(M_low, 2, 7);
+    checkEqual(jumpedMilestones.triggered.join(","), "1,2", "A counter jump crosses every milestone");
+    checkEqual(jumpedMilestones.win, 30, "A counter jump pays both crossed jackpots");
+    console.log("PASS: cumulative jackpot thresholds");
+}
+function runForcedChecks(testName) {
+    console.log(`\n=== Forced mechanic checks: ${testName} ===`);
+    if (testName === "all" || testName === "stars")
+        runStarChecks();
+    if (testName === "all" || testName === "expansion")
+        runExpansionChecks();
+    if (testName === "all" || testName === "columns")
+        runColumnChecks();
+    if (testName === "all" || testName === "jackpots")
+        runJackpotChecks();
+    console.log("All selected checks passed.");
+}
+runForcedChecks(TEST_TO_RUN);
